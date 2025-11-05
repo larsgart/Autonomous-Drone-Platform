@@ -5,7 +5,7 @@
 #include <Status_LED.h>
 
 // Debug
-// #define ENABLE_SERIAL_DEBUG // Uncomment to enable serial debugging
+#define ENABLE_SERIAL_DEBUG // Uncomment to enable serial debugging
 
 // Read-only register addresses
 #define FIRMWARE_VERSION_REG  0x00
@@ -28,6 +28,8 @@ bool debug_led_state = false;
 
 uint16_t motor_speeds[4];
 bool motor_speeds_updated = false;
+
+unsigned long prev_millis = 0;
 
 /*!
   \brief Set motor speeds to 0 and indicate they were changed
@@ -206,6 +208,8 @@ void setup() {
       Serial.println("Peripherals initialized successfully");
     }
   #endif
+
+  prev_millis = millis();
 }
 
 void loop() {
@@ -244,4 +248,24 @@ void loop() {
     status_led.active = motors.armed;
   }
   set_led_state();
+
+  #ifdef ENABLE_SERIAL_DEBUG
+    if (serial_initialized) {
+      if (millis() - prev_millis > 1000) {
+        prev_millis = millis();
+        // Serial.print("Batt mV: ");
+        // Serial.print(monitoring.battery_voltage_mv);
+        // Serial.print("\tESC mA: ");
+        // Serial.print(monitoring.esc_current_ma);
+        // Serial.print("\tJetson mA: ");
+        // Serial.println(monitoring.jetson_current_ma);
+        for (int i = 0; i < 16; i++)
+        {
+          Serial.print(monitoring.adc_readings[i]);
+          Serial.print(" ");
+        }
+        Serial.println();
+      }
+    }
+  #endif
 }

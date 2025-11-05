@@ -25,6 +25,8 @@ typedef struct {
   uint16_t battery_voltage_mv;
   uint16_t jetson_current_ma;
   uint16_t esc_current_ma;
+
+  uint16_t adc_readings[16];
 } Monitoring_t;
 
 // Global instance of Monitoring

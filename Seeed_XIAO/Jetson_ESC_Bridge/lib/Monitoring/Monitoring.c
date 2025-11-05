@@ -22,7 +22,8 @@
 Monitoring_t monitoring = {
   .battery_voltage_mv = 0,
   .jetson_current_ma = 0,
-  .esc_current_ma = 0
+  .esc_current_ma = 0,
+  .adc_readings = {}
 };
 
 // Constants
@@ -61,8 +62,14 @@ static void configure_pins(void) {
   \brief Connect the TC3 overflow event to the ADC start conversion
 */
 static void configure_event_system(void) {
-  // Enable EVSYS clocks and reset event system
-  PM->APBCMASK.reg |= PM_APBCMASK_EVSYS;
+  // Enable EVSYS clocks
+  PM->APBCMASK.reg |= PM_APBCMASK_EVSYS;                      // Enable APBC clock for ADC
+  GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(GCM_EVSYS_CHANNEL_0) |  // Select the clock for channel 0 of event system
+                      GCLK_CLKCTRL_GEN_GCLK0 |                // Use generic clock generator 0
+                      GCLK_CLKCTRL_CLKEN;                     // Enable the clock
+  while (GCLK->STATUS.bit.SYNCBUSY);
+
+  // Reset event system
   EVSYS->CTRL.bit.SWRST = 1;
   
   // Configure ADC start conversion event to be triggered by event channel 0
@@ -90,6 +97,7 @@ static void configure_adc(void) {
   GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(GCM_ADC) |  // Select the ADC clock
                       GCLK_CLKCTRL_GEN_GCLK0 |    // Use generic clock generator 0
                       GCLK_CLKCTRL_CLKEN;         // Enable the clock
+  while (GCLK->STATUS.bit.SYNCBUSY);
 
   // Disable and reset the ADC
   ADC->CTRLA.bit.ENABLE = 0;
@@ -166,8 +174,8 @@ void monitoring_init(void) {
   NVIC_ClearPendingIRQ(ADC_IRQn);
   NVIC_SetPriority(ADC_IRQn, 1);
 
-  configure_event_system();
   configure_pins();
+  configure_event_system();
   configure_adc();
   configure_timer();
 
@@ -183,6 +191,10 @@ void process_adc_readings(void) {
     monitoring.battery_voltage_mv = VOLTAGE_LSB_MV * adc_results[BATTERY_VOLTAGE_ARR_I];
     monitoring.jetson_current_ma = JETSON_CURRENT_LSB_MA * adc_results[JETSON_CURRENT_ARR_I];
     monitoring.esc_current_ma = ESC_CURRENT_LSB_MA * adc_results[ESC_CURRENT_ARR_I];
+    for (int i = 0; i < NUM_ADC_INPUTS; i++) {
+      // monitoring.adc_readings[i] = adc_results[i];
+      monitoring.adc_readings[i] = 100;
+    }
   }
 }
 // ----------------------------------------------------------------------
