@@ -73,11 +73,11 @@ static void configure_event_system(void) {
   EVSYS->CTRL.bit.SWRST = 1;
   
   // Configure ADC start conversion event to be triggered by event channel 0
-  EVSYS->USER.reg |=  EVSYS_USER_CHANNEL(0) |   // Select user channel 0
-                      EVSYS_ID_USER_ADC_START;  // Connect to ADC start conversion
+  EVSYS->USER.reg = EVSYS_USER_CHANNEL(1) |   // Select channel 0 (channel is n-1)
+                    EVSYS_ID_USER_ADC_START;  // Connect to ADC start conversion
   
   // Configure event channel 0 to be triggered by TC3 overflow
-  EVSYS->CHANNEL.reg |= EVSYS_CHANNEL_PATH_ASYNCHRONOUS |           // Asynchronous path
+  EVSYS->CHANNEL.reg =  EVSYS_CHANNEL_PATH_ASYNCHRONOUS |           // Asynchronous path
                         EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_TC3_OVF) | // Trigger on TC3 overflow
                         EVSYS_CHANNEL_CHANNEL(0);                   // Use channel 0
 }
@@ -192,8 +192,8 @@ void process_adc_readings(void) {
     monitoring.jetson_current_ma = JETSON_CURRENT_LSB_MA * adc_results[JETSON_CURRENT_ARR_I];
     monitoring.esc_current_ma = ESC_CURRENT_LSB_MA * adc_results[ESC_CURRENT_ARR_I];
     for (int i = 0; i < NUM_ADC_INPUTS; i++) {
-      // monitoring.adc_readings[i] = adc_results[i];
-      monitoring.adc_readings[i] = 100;
+      monitoring.adc_readings[i] = adc_results[i];
+      // monitoring.adc_readings[i] = 100;
     }
   }
 }
