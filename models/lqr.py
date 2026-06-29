@@ -11,7 +11,7 @@ class LQR:
 
     Coordinate frame: ZED RIGHT_HANDED_Y_UP — Y is altitude.
     Angles/rates use the flight-controller sign convention (roll and pitch
-    are negated relative to raw ZED output; see ZedModel.get_state()).
+    are negated relative to raw ZED output; see Zed.get_state()).
 
     Control outputs are in motor-speed units (0–100 scale) so they feed
     directly into the motor mixer without an additional scaling step.

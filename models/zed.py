@@ -3,20 +3,12 @@ import math
 import time
 import logging
 import numpy as np
-from datetime import datetime
+
+log = logging.getLogger(__name__)
 
 
-class ZedModel:
-    def __init__(self, log=False):
-        self.log = log
-        if self.log:
-            logging.basicConfig(
-                filename=f"../Logs/{self.__class__.__name__}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
-                level=logging.DEBUG,
-                format='%(asctime)s:%(levelname)s:%(message)s',
-            )
-            self.logger = logging.getLogger()
-
+class Zed:
+    def __init__(self):
         self.zed = sl.Camera()
 
         init_params = sl.InitParameters()
@@ -24,21 +16,18 @@ class ZedModel:
         init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
         init_params.coordinate_units = sl.UNIT.METER
 
-        # Close if left open from a previous session
-        self.close()
+        self.close()  # close if left open from a previous session
 
         err = self.zed.open(init_params)
         if err != sl.ERROR_CODE.SUCCESS:
-            if self.log:
-                self.logger.error(f"Failed to open camera: {err}")
+            log.error(f"Failed to open camera: {err}")
             self.zed.close()
             exit(1)
 
         tracking_params = sl.PositionalTrackingParameters(_init_pos=sl.Transform())
         err = self.zed.enable_positional_tracking(tracking_params)
         if err != sl.ERROR_CODE.SUCCESS:
-            if self.log:
-                self.logger.warning(f"Failed to enable tracking: {err}")
+            log.warning(f"Failed to enable positional tracking: {err}")
             self.zed.close()
             exit(1)
 
@@ -51,8 +40,6 @@ class ZedModel:
         if self.zed.is_opened():
             self.zed.disable_spatial_mapping()
             self.zed.close()
-            if self.log:
-                self.logger.info("Camera closed")
 
     def get_config(self):
         return self.zed.get_camera_information()
@@ -61,8 +48,7 @@ class ZedModel:
         sensors_data = sl.SensorsData()
         if self.zed.get_sensors_data(sensors_data, sl.TIME_REFERENCE.CURRENT) == sl.ERROR_CODE.SUCCESS:
             return sensors_data.get_imu_data().get_pose().get_orientation().get()
-        if self.log:
-            self.logger.warning("IMU data unavailable")
+        log.warning("IMU data unavailable")
         return None
 
     def get_euler(self) -> dict:
