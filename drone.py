@@ -1,11 +1,13 @@
 import sys
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from models.flight_controller import FlightController
 
 
 def _setup_logging():
+    Path("Logs").mkdir(exist_ok=True)
     logging.basicConfig(
         filename=f"Logs/drone_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
         level=logging.DEBUG,
