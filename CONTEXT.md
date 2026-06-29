@@ -30,6 +30,25 @@ motor 2 (rear-left):   hover + T - pitch - roll - yaw
 motor 3 (front-left):  hover + T + pitch - roll + yaw
 ```
 
+## Setpoint Mode: Velocity Tracking
+
+RC sticks command **world-frame velocity setpoints** (not attitude angles). The flight controller rotates stick inputs from body frame to world frame using the current yaw (`psi`) before writing `x_ref`:
+
+```
+x_ref[3] (vx) = -v_fwd·sin(ψ) + v_lat·cos(ψ)   ← roll + pitch sticks, rotated
+x_ref[4] (vy) = throttle deviation from centre    ← climb/descend rate
+x_ref[5] (vz) = -v_fwd·cos(ψ) - v_lat·sin(ψ)   ← roll + pitch sticks, rotated
+x_ref[8] (ψ)  = x[8]  (current yaw — rate-only yaw control, no position restore)
+x_ref[11](r)  = yaw stick                         ← unchanged
+```
+
+- **Centre throttle (1500 µs) = hold altitude** (`x_ref[4] = 0`).  Push up to climb, down to descend.
+- **Hover feedforward** is a fixed `50 × throttle_scale` motor-speed units (default 25). Adjust `throttle_scale` if the drone sinks at centre stick after gains are tuned.
+- **Yaw**: releasing the yaw stick holds the current heading. The LQR applies no yaw position restoration — only yaw-rate damping.
+- **Velocity limits**: `MAX_FORWARD_VEL = MAX_LATERAL_VEL = 2.0 m/s`, `MAX_VERT_VEL = 1.0 m/s`. Tune conservatively before raising.
+
+The Q matrix is reweighted for this mode: velocity states `[5, 5, 5]`, attitude states `[5, 5, 1]` (was `[10, 10, 1]`). Attitude is now an intermediate variable rather than a direct setpoint.
+
 ## Coordinate Frame
 
 ZED camera uses **RIGHT_HANDED_Y_UP**: Y is altitude, X is lateral-right, Z is backward.
@@ -57,10 +76,27 @@ All physical parameters in `models/lqr.py` are estimates. Do not fly without ver
 
 ## Pre-Flight Checklist
 
+### LQR gain sanity check (no hardware needed)
+- [ ] Run `python3 tools/check_lqr.py` — all key coupling gains should be non-zero. A near-zero gain on any of `K[0,4]` (altitude), `K[1,3]` (lateral), `K[2,5]` (forward), `K[3,11]` (yaw) means the controller has no authority over that channel
+
+### ZED / sensor verification (props off, ZED running)
+- [ ] Confirm ZED `get_angular_velocity()` output is in deg/s (not rad/s); if already rad/s, remove the `math.radians()` conversion in `zed.py:92`
+- [ ] **Yaw sign convention**: rotate the drone CCW (left turn) when viewed from above — `get_state()[8]` (psi) should *increase*. If it decreases, negate `psi` in the `sin`/`cos` terms in `flight_controller.py:71-73`
+- [ ] Verify A-matrix coupling signs: tilting the drone forward should produce negative vz (forward = −Z). `A[3,6]=g` (roll → X accel), `A[5,7]=-g` (pitch → −Z accel)
+
+### Physical parameter measurement (required before first flight)
 - [ ] Replace placeholder LQR physical params with measured values (see table above)
-- [ ] Confirm ZED `get_angular_velocity()` output is in deg/s (not rad/s); if already rad/s, remove the conversion in `zed.py`
-- [ ] Verify A-matrix coupling signs: tilting the drone should produce lateral velocity in the expected direction per the ZED frame. `A[3,6]=g` (roll → X accel), `A[5,7]=-g` (pitch → -Z accel)
+
+### Bench test (props off, armed)
+- [ ] Centre throttle stick (1500 µs) — confirm motor outputs are non-zero (hover feedforward active) but low
+- [ ] Push pitch stick forward — confirm front motors increase, rear motors decrease (forward tilt)
+- [ ] Push roll stick right — confirm right motors increase, left motors decrease
+- [ ] Yaw the drone by hand after a small yaw-stick input; confirm the velocity setpoint rotates with heading (strafe test)
+
+### First flight
 - [ ] Tune Q/R matrices in `lqr.py` based on flight behavior: high Q → aggressive correction, high R → soft actuation
+- [ ] Adjust `throttle_scale` in `FlightController.__init__` if drone sinks or climbs at centre stick
+- [ ] Raise `MAX_FORWARD_VEL` / `MAX_LATERAL_VEL` / `MAX_VERT_VEL` conservatively once hover is stable
 
 ## Package Setup
 

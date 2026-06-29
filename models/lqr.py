@@ -65,11 +65,11 @@ class LQR:
 
     def _default_Q(self):
         # State cost: [x, y(alt), z, vx, vy(alt), vz, phi, theta, psi, p, q, r]
-        # Attitude is heavily penalized; position lightly penalized initially.
+        # Velocity tracking mode: velocity is the primary setpoint; attitude is secondary.
         return np.diag([
-            1.0,  2.0,  1.0,    # position (altitude weighted higher)
-            0.5,  1.0,  0.5,    # velocity
-            10.0, 10.0, 1.0,    # attitude (roll/pitch critical; yaw softer)
+            0.5,  1.0,  0.5,    # position (not held in velocity mode)
+            5.0,  5.0,  5.0,    # velocity (primary setpoint — weighted heavily)
+            5.0,  5.0,  1.0,    # attitude (stability; roll/pitch enable velocity, yaw softer)
             1.0,  1.0,  0.5,    # angular rates
         ])
 
