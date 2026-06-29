@@ -1,70 +1,44 @@
-'''
-Author: Jerin Abraham
-
-This class handles reading from the RC receiver
-'''
 import serial
 import numpy as np
 from ibus_model import IBus
 
+DEADBAND_LOW  = 1492
+DEADBAND_HIGH = 1508
+DEADBAND_CENTER = 1500
+MISSED_READING_LIMIT = 100
+
 
 class RX:
-    '''
-    Initializes the UART and IBUS and initializes the outputs
-    '''
     def __init__(self):
-        self.uart = serial.Serial(port="/dev/ttyTHS1", baudrate=115200)
-        self.ibus = IBus(self.uart)
-        self.input = [0] * 14
-        self.output = [1500] * 4
-        self.missedReadings = 0
+        self._uart = serial.Serial(port="/dev/ttyTHS1", baudrate=115200)
+        self._ibus = IBus(self._uart)
+        self._output = np.array([1500, 1500, 1000, 1500])
+        self._missed = 0
 
-    '''
-    Create a 16us deadzone around the center of the joystick to prevent pid errors
+    def read(self) -> np.ndarray:
+        self._uart.reset_input_buffer()
+        packet = self._ibus.read()
 
-    PARAMETERS:
-        input (int): an output value from one of the channels of the receiver
-
-    RETURNS:
-        (int): integer value with a deadband
-    '''
-    def __createDeadband(self, input):
-        return input if not 1492 < input < 1508 else 1500
-
-    '''
-    Read receiver and handle missed inputs
-
-    RETURNS:
-        List[int]: A list of the received values from each channel of the receiver
-    '''
-    def readRX(self):
-        # Flush serial buffer
-        self.uart.reset_input_buffer()
-
-        # Read RX values
-        self.input = self.ibus.readIBUS()
-
-        # Only update output if input isn't None and increment missedReadings if it is
-        if self.input:
-            self.output = np.clip(self.input, 1000, 2000)
-            self.missedReadings = 0
+        if packet:
+            self._output = np.clip(packet, 1000, 2000)
+            self._missed = 0
         else:
-            self.missedReadings += 1
+            self._missed += 1
+            if self._missed > MISSED_READING_LIMIT:
+                self._output = np.array([1500, 1500, 1000, 1500])
 
-            # If there were over 100 missed readings, set the control input to hover
-            if self.missedReadings > 100:
-                self.output = [1500, 1500, 1000, 1500]
+        for ch in (0, 1, 3):
+            v = self._output[ch]
+            self._output[ch] = DEADBAND_CENTER if DEADBAND_LOW < v < DEADBAND_HIGH else v
 
-        # Create a deadband for channels 0, 1, and 3
-        self.output[0], self.output[1], self.output[3] = (self.__createDeadband(input) \
-                                                          for input in (self.output[0]
-                                                                        , self.output[1]
-                                                                        , self.output[3]))
-        return self.output
-    
-    def readRX_normalized(self):
-        return (self.readRX() - 1000) / 1000
+        return self._output
+
+    def read_normalized(self) -> np.ndarray:
+        return (self.read() - 1000) / 1000
+
+    def close(self):
+        if self._uart and self._uart.is_open:
+            self._uart.close()
 
     def __del__(self):
-        self.uart.close()
-        
+        self.close()

@@ -1,128 +1,58 @@
-'''
-Author: Jerin Abraham
-
-This class handles outputting motor speeds to the motor controller MCU
-'''
-
 import serial
 import random
 import numpy as np
 
 
 class Motors:
-   '''
-   Instantiates the UART and connects to the MCU
-   '''
-   def __init__(self):
-      # logging.basicConfig(filename=f"/home/drone/Autonomous-Drone-Platform/Logs/{self.__class__.__name__}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
-      #                      ,level=logging.DEBUG
-      #                      ,format='%(asctime)s:%(levelname)s:%(message)s')
-      # self.logger = logging.getLogger()
-      # Define object variables
-      self.test_passed = False
-      self.test_range = 100
-      self.num_motors = 4
+    def __init__(self):
+        self.test_passed = False
+        self._uart = None
+        self._connect()
 
-      # Connect to the MCU
-      self.connect()
+    def _connect(self):
+        print("Waiting for MCU ENQ...")
+        self._uart = serial.Serial(port="/dev/ttyS0", baudrate=115200)
+        while self._uart.read() != b'\x05':
+            pass
+        print("Connected to MCU")
+        self._uart.write(bytearray([6]))  # ACK
 
-   '''
-   Tests the connection and speed transmission between the Jetson and the MCU
-   '''
-   def test_motors(self):
-      print("Testing Motors")
-      # Send 100 test speeds to verify connection and encryption/decryption
-      for _ in range(self.test_range):
-         test_speeds = [random.randint(0, 100) for x in range(self.num_motors)]
-         self.output_speeds(test_speeds)
-         speed_list_unscaled = [x for x in self.uart.read_until().decode().strip().split(",")]
-         speed_list = [int((int(x) - 1000) / 10) for x in speed_list_unscaled]
-         for i in range(self.num_motors):
-               recvSpd = speed_list[i]
-               calcSpd = test_speeds[i]
-               if (calcSpd != recvSpd):
-                  print(f"Test Failed: Expected {self.scale_speeds(test_speeds)}, Received {speed_list}")
-                  self.uart.write(bytearray([21])) # Send NACK
-                  
-                  return False
-               
-      # End testing and set MCU into receiveSpeed state
-      self.uart.write(bytearray([6])) # Send ACK
-      self.uart.write(bytearray([4])) # Send EOT
-      print('Motor tests passed')
+    def test_motors(self):
+        print("Testing motors")
+        for _ in range(100):
+            speeds = [random.randint(0, 100) for _ in range(4)]
+            self.output_speeds(speeds)
+            received = [int((int(x) - 1000) / 10)
+                        for x in self._uart.read_until().decode().strip().split(",")]
+            if received != speeds:
+                print(f"Test failed: expected {speeds}, got {received}")
+                self._uart.write(bytearray([21]))  # NACK
+                return False
 
-      # Set motors to 0 speed and return True to indicate the motors have passed testing
-      self.zero_throttle()
-      self.test_passed = True
-      return True
+        self._uart.write(bytearray([6]))   # ACK
+        self._uart.write(bytearray([4]))   # EOT
+        print("Motor tests passed")
+        self.zero_throttle()
+        self.test_passed = True
+        return True
 
-   '''
-   Disconnects from the MCU upon deletion
-   '''
-   def __del__(self):
-      self.disconnect()
+    def output_speeds(self, speeds: list):
+        if not self._validate(speeds):
+            return
+        scaled = [int(np.clip(s * 10 + 1000, 1000, 2000)) for s in speeds]
+        stream = [2] + [b for s in scaled for b in (s >> 8, s & 0xFF)]
+        self._uart.write(bytearray(stream))
 
-   '''
-   Connects to the MCU and ACK's it to move it into the testing state
-   '''
-   def connect(self):
-      print("Attempting to connect to MCU. Waiting for ENQ...")
-      self.uart = serial.Serial(port="/dev/ttyS0", baudrate=115200)
+    def zero_throttle(self):
+        self.output_speeds([0] * 4)
 
-      # Wait for an ENQ
-      while self.uart.read() != b'\x05':
-         pass
-      print("ENQ recieved. Connecting to MCU")
-      self.uart.write(bytearray([6])) # Send ACK
+    def close(self):
+        if self._uart and self._uart.is_open:
+            self._uart.write(bytearray([27]))  # ESC → MCU back to idle
+            self._uart.close()
 
-   '''
-   Disconnects from the MCU and closes the UART
-   '''
-   def disconnect(self):
-      if self.uart:
-         # Send an ESC to set the state machine back to the waitForConnection state and close the UART
-         self.uart.write(bytearray([27]))
-         self.uart.close()
-         del self.uart
+    def __del__(self):
+        self.close()
 
-   '''
-   Sends data over UART
-   '''
-   def send_data(self, data):
-      if self.test_passed:
-         encoded = None
-         if (type(data) == str and len(data) == 1):
-            encoded = data.encode()
-            self.uart.write(encoded)
-         elif type(data) == int:
-            encoded = bytearray([data])
-            self.uart.write(encoded)
-         return encoded
-
-   '''
-   Splits speeds into MSB and LSB for each speed and send byte stream to speed controller via UART
-   '''
-   def output_speeds(self, speeds: list):
-      if self.validate_speeds(speeds):
-         scaled_speeds = self.scale_speeds(speeds)
-         byte_stream = [2] + [speed >> i & 255 for speed in scaled_speeds for i in (8, 0)] # Sends a '<' and '>'.
-         self.uart.write(bytearray(byte_stream))
-         return byte_stream
-      
-   '''
-   Sends zero throttle data to the motors
-   '''
-   def zero_throttle(self):
-      self.output_speeds([0] * 4)
-    
-   def validate_speeds(self, speeds):
-      if len(speeds) != 4:
-         return False
-      for speed in speeds:
-         if (speed < 0 or speed > 100):
-            return False
-      return True
-
-   def scale_speeds(self, speeds): # Scaling and constraining speeds from 0-100 to 1000-2000
-      scaled_speeds = [np.clip(int(speed * 10 + 1000), 1000, 2000) for speed in speeds]
-      return scaled_speeds
+    def _validate(self, speeds) -> bool:
+        return len(speeds) == 4 and all(0 <= s <= 100 for s in speeds)

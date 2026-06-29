@@ -1,56 +1,34 @@
-'''
-Author: house4hack
-Editor: jerinabr
+import struct
 
-Code taken from https://github.com/house4hack/circuitpython-ibus
-'''
+# Protocol: https://github.com/house4hack/circuitpython-ibus
+
 
 class IBus:
+    _SERVO    = 0x40
+    _CHANNELS = 14
+    _OVERHEAD = 3
+    _MAX_LEN  = 0x20
+
     def __init__(self, uart):
-        self.uart = uart
-        self.PROTOCOL_SERVO = 0x40
-        self.PROTOCOL_CHANNELS = 14
-        self.PROTOCOL_OVERHEAD = 3
-        self.PROTOCOL_LENGTH = 0x20
+        self._uart = uart
 
+    def read(self):
+        length_byte = self._uart.read(1)
+        expected_len = length_byte[0] - 1
+        if not (self._OVERHEAD <= expected_len < self._MAX_LEN):
+            return None
 
-    def readUART(self):
-        data = None
-        while data is None:
-            data = self.uart.read(1)
-        return data
+        payload = bytearray(expected_len)
+        if self._uart.readinto(payload) != expected_len:
+            return None
 
+        if payload[0] & 0xF0 != self._SERVO:
+            return None
 
-    #@staticmethod
-    def checksum(self, arr, initial):
-        # sum = initial + sum(arr)
-        # checksum = 0xFFFF - sum
-        # return checksum >> 8, checksum & 0xFF
-        sum = initial
-        for val in arr:
-            sum += val
-        checksum = 0xFFFF - sum
-        chA = checksum >> 8
-        chB = checksum & 0xFF
-        return chA, chB
-    
+        total = expected_len + 1 + sum(payload[:-2])
+        computed = 0xFFFF - total
+        stored = (payload[-1] << 8) | payload[-2]
+        if stored != computed:
+            return None
 
-
-    def readIBUS(self):
-        data = self.readUART()
-
-        expectedLen = data[0] - 1
-        if self.PROTOCOL_OVERHEAD <= expectedLen < self.PROTOCOL_LENGTH:
-            dataArr = bytearray(expectedLen)
-            totalRead = self.uart.readinto(dataArr)
-            if totalRead == expectedLen:
-                cmd = dataArr[0] & 0xF0
-
-                chA1, chB1 = dataArr[-1], dataArr[-2]
-                chA2, chB2 = self.checksum(dataArr[:-2], expectedLen + 1)
-                if chA1 == chA2 and chB1 == chB2:
-                    if cmd == self.PROTOCOL_SERVO:
-                        return [(dataArr[2 * i + 2] << 8) | dataArr[2 * i + 1] for i in range(self.PROTOCOL_CHANNELS)]
-
-        return None
-    
+        return list(struct.unpack_from(f'<{self._CHANNELS}H', payload, 1))
