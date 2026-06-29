@@ -1,17 +1,13 @@
-import sys
-
-sys.path.append("/home/drone/Autonomous-Drone-Platform/Models")
-
-from rx_model import RX
+from models.rx import RX
 
 rx = RX()
 
 def main():
     while True:
-        print(rx.readRX())
+        print(rx.read())
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        del rx
+        rx.close()

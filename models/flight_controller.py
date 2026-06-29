@@ -48,10 +48,6 @@ class FlightController:
         self.zed = Zed()
         self.lqr = LQR()
 
-    def _output_speeds(self, speeds: list):
-        reordered = [speeds[0], speeds[3], speeds[1], speeds[2]]
-        self.motors.output_speeds(reordered)
-
     def run(self):
         log.info("Entering main event loop")
         while True:
@@ -79,7 +75,7 @@ class FlightController:
             ]
 
             if rx_data[2] > self.throttle_cutoff:
-                self._output_speeds(m_speeds)
+                self.motors.output_speeds(m_speeds)
             else:
                 self.motors.zero_throttle()
 
